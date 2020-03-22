@@ -1,0 +1,22 @@
+#header {
+    display: flex;
+    height: 5%;
+    div.left-items {
+        flex: 1 1 50%;
+        display: flex;
+    }
+
+    div.right-items {
+        flex: 1 1 50%;
+    }
+
+    .left-items, .right-items {
+        .item {
+            height: 40px;
+            width: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    }
+}

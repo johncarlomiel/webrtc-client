@@ -1,0 +1,11 @@
+#home-page {
+    height: 100vh;
+    overflow-y: hidden;
+
+    #home-body {
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+}
