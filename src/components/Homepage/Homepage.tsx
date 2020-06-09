@@ -16,6 +16,8 @@ export default function Homepage() {
   });
   const [elapsedTime, setElapsedTime] = useState(1);
 
+  const [queueStatus, setQueueStatus] = useState();
+
   useEffect(() => {
     WebSocketClient.ws.onopen = () => {
       console.log("Websocket Connected");
@@ -28,9 +30,19 @@ export default function Homepage() {
         case 'received-queue-info':
           onReceiveQueueInfo(data);
           break;
+        case 'break-match':
+          breakMatch(data);
+          break;
+        case 'match-ready':
+          matchReady(data);
+          break;
         default:
           break;
       }
+    };
+
+    WebSocketClient.ws.onerror = event => {
+      console.log('Error');
     };
 
     return () => {
@@ -38,9 +50,18 @@ export default function Homepage() {
         clearInterval(timer.current);
       }
     }
-  });
+  }, []);
 
-  const onReceiveQueueInfo = (data) => {
+  const breakMatch = (data) => {
+    console.log(data);
+  };
+
+  const matchReady = (data) => {
+    alert('Match Ready');
+    console.log(data);
+  };
+
+  const onReceiveQueueInfo = ({ roomId }) => {
     closeModal();
     Swal.fire({
       title: 'Match found',
@@ -51,30 +72,36 @@ export default function Homepage() {
       cancelButtonColor: '#d33',
       confirmButtonText: 'Accept'
     }).then((result) => {
-      if (result.value) {
-        
-      }else if(result.dismiss === Swal.DismissReason.cancel){ 
-        console.log('reject');
-      }
-    })
-  };
-
-  const sendQueue = () => {
-    WebSocketClient.sendMessage({
-      feature: 'peerToPeer',
-      type: 'queue',
-    })
+      let response = result.value ? 'accept' : 'reject';
+      invitationResponse(response, roomId);
+    });
   };
 
   const startQueue = () => {
+    console.log('Starting Queue')
+    setQueueStatus('queuing');
     setTimerModal(timerModal => {
       return {
         ...timerModal,
         open: true
       };
     });
-    timer.current = setInterval(() => setElapsedTime(elapsedTime => elapsedTime + 1), 1000);
-    sendQueue();
+    timer.current = setInterval(() =>  setElapsedTime(elapsedTime => elapsedTime + 1), 1000);
+
+    WebSocketClient.sendMessage({
+      feature: 'peerToPeer',
+      type: 'queue'
+    });
+  };
+
+  const invitationResponse = (response, roomId) => {
+    WebSocketClient.sendMessage({
+      feature: 'peerToPeer',
+      type: 'invitation-response',
+      data: {
+        roomId, response
+      }
+    }); 
   };
 
   const closeModal = () => {
@@ -84,14 +111,31 @@ export default function Homepage() {
         open: false
       };
     });
-    stopQueue();
-    setElapsedTime(1);
-  };
-
-  const stopQueue = () => {
     clearInterval(timer.current);
+    setElapsedTime(1);
+
+    WebSocketClient.sendMessage({
+      feature: 'peerToPeer',
+      type: 'cancel-queue'
+    });
   };
 
+  const getModalState = (state) => {
+    const modalState = {
+      queuing: {
+        header: 'Searching for a match',
+        content: `${elapsedTime} Seconds`
+      },
+      waiting: {
+        header: 'Match accepted',
+        content: 'Please wait for the others to accept the invitation'
+      }
+    };
+    return state ? modalState[state] : { header: '', content: ''};
+  }
+
+  
+  const { header, content } = getModalState(queueStatus);
   return (
     <div id="home-page">
       <Header />
@@ -104,14 +148,15 @@ export default function Homepage() {
       </div>
 
       <Modal size={timerModal.size} open={timerModal.open} onClose={closeModal}>
-        <Modal.Header className="timer-modal-head">Searching for a match</Modal.Header>
+        <Modal.Header className="timer-modal-head">{header}</Modal.Header>
         <Modal.Content>
-          <p>{elapsedTime} Seconds</p>
+          <p>{content}</p>
         </Modal.Content>
         <Modal.Actions>
           <Button negative onClick={closeModal} content="Cancel" />
         </Modal.Actions>
       </Modal>
+
     </div>
   );
 }
