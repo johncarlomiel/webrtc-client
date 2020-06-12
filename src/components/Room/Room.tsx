@@ -3,9 +3,9 @@ import WebSocketClient from '../../models/WebSocketClient';
 import Header from '../Header/Header';
 import { chats } from './chat';
 import './Room.scss';
-const offerOptions = {
-	offerToReceiveAudio: 1,
-	offerToReceiveVideo: 1
+const offerOptions: RTCOfferOptions = {
+	offerToReceiveAudio: true,
+	offerToReceiveVideo: true
 };
 
 const localStreamOptions = {
@@ -22,21 +22,24 @@ const localStreamOptions = {
 		facingMode: "user"
 	}, audio: false
 };
+
+
+
 export default function Room() {
 	const myPeerConnection = new RTCPeerConnection();
 	let role = '';
 	let roomId = '';
-	let myConnectedCandidates = [];
-	let localVid = useRef();
-	let remoteVid = useRef();
-	let localStream;
+	let myConnectedCandidates: RTCIceCandidate[] = [];
+	let localVid = useRef<HTMLVideoElement>(null);
+	let remoteVid = useRef<HTMLVideoElement>(null);
+	let localStream: MediaStream;
 
 	const [username, setUsername] = useState('');
-	const [messages, setMessages] = useState([]);
+	const [messages, setMessages] = useState<Message[]>([]);
 	const [textBox, setTextBox] = useState('');
 	const [test, setTest] = useState('hehehe');
 	// let dataChannel = myPeerConnection.createDataChannel('chatRoom', { negotiated: true, id: 0 });
-	const [dataChannel, setDataChannel] = useState(null);
+	const [dataChannel, setDataChannel] = useState<RTCDataChannel>();
 
 
 
@@ -74,7 +77,7 @@ export default function Room() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	const onOffer = async (data) => {
+	const onOffer = async (data: { offer: RTCSessionDescriptionInit }) => {
 		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
 		const answer = await myPeerConnection.createAnswer();
 		myPeerConnection.setLocalDescription(answer);
@@ -89,11 +92,11 @@ export default function Room() {
 		sendMessageToServer(payload);
 	}
 
-	const onAnswer = (data) => {
+	const onAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
 		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
 	}
 
-	const onReceiveQueueInfo = async (data) => {
+	const onReceiveQueueInfo = async (data: { username: string, role: string, roomId: string }) => {
 		setUsername(data.username);
 		role = data.role;
 		roomId = data.roomId;
@@ -119,13 +122,13 @@ export default function Room() {
 			console.log(dataChannel)
 
 			sendMessageToServer(payload);
-		} else{
+		} else {
 			//Set on data channel to receive when initiator create data channel
 			myPeerConnection.ondatachannel = onPRDataChannel;
 		}
 	}
 
-	const onAddCandidate = (data) => {
+	const onAddCandidate = (data: { candidate: RTCIceCandidateInit }) => {
 		var candidate = new RTCIceCandidate({
 			sdpMLineIndex: data.candidate.sdpMLineIndex,
 			candidate: data.candidate.candidate,
@@ -139,7 +142,7 @@ export default function Room() {
 
 
 
-	const sendCandidate = (candidate) => {
+	const sendCandidate = (candidate: RTCIceCandidate) => {
 		const params = {
 			type: 'add-candidate',
 			data: {
@@ -152,23 +155,25 @@ export default function Room() {
 		WebSocketClient.ws.send(JSON.stringify(params));
 	}
 
-	const sendMessageToServer = (payload) => {
+	const sendMessageToServer = (payload: Object) => {
 		WebSocketClient.ws.send(JSON.stringify(payload));
 	}
 
-	const onPRIceCandidate = (event) => {
+	const onPRIceCandidate = (event: RTCPeerConnectionIceEvent) => {
 		if (event.candidate) {
 			sendCandidate(event.candidate);
 		}
 	};
 
-	const onPRTrack = (event) => {
-		remoteVid.current.srcObject = event.streams[0];
+	const onPRTrack = (event: RTCTrackEvent) => {
+		if(remoteVid.current) {
+			remoteVid.current.srcObject = event.streams[0]
+		}
 	};
 
-	const onPRDataChannel = (event) => {
+	const onPRDataChannel = (event: RTCDataChannelEvent) => {
 		// Receiver received the data channel from initiator
-		const {channel} = event;
+		const { channel } = event;
 		const dataChannel = channel;
 		dataChannel.onopen = onDataChannelOpen;
 		dataChannel.onmessage = onDataChannelMessage;
@@ -177,15 +182,15 @@ export default function Room() {
 		console.log('onPRDataChannel')
 	};
 
-	const onDataChannelOpen = (event) => {
+	const onDataChannelOpen = (event: Event) => {
 		const { target: channel } = event;
 	};
 
-	const onDataChannelClose = (event) => {
+	const onDataChannelClose = (event: Event) => {
 		console.log('data channel Close');
 	};
 
-	const onDataChannelMessage = event => {
+	const onDataChannelMessage = (event: MessageEvent) => {
 		const { data } = event;
 		const message = JSON.parse(data);
 		setMessages(prevMessages => prevMessages.concat(message));
@@ -199,10 +204,8 @@ export default function Room() {
 	const startQueue = async () => {
 		myPeerConnection.addEventListener('icecandidate', onPRIceCandidate);
 		myPeerConnection.addEventListener('track', onPRTrack);
-
 		localStream = await navigator.mediaDevices.getUserMedia(localStreamOptions);
-
-		localVid.current.srcObject = localStream;
+		if(localVid.current) localVid.current.srcObject = localStream;
 		localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
 		const payload = {
 			type: 'queue',
@@ -211,35 +214,36 @@ export default function Room() {
 		sendMessageToServer(payload);
 	}
 
-	const onTextboxChange = event => {
+	const onTextboxChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const { value } = event.target;
 		setTextBox(value);
 	};
 
 	const sendMessage = () => {
-		console.log(dataChannel)
-		const payload = {
-			user:username,
-			text:textBox
-		};
-		switch (dataChannel.readyState) {
-			case "connecting":
-				console.log("Connection not open; queueing: ");
-				// sendQueue.push(msg);
-				break;
-			case "open":
-				// sendQueue.forEach((msg) => dataChannel.send(msg));
-				setMessages(messages.concat(payload));
-				dataChannel.send(JSON.stringify(payload));
-				break;
-			case "closing":
-				console.log("Attempted to send message while closing: ");
-				break;
-			case "closed":
-				console.log("Error! Attempt to send while connection closed.");
-				break;
-			default:
-				break;
+		if (dataChannel) {
+			const payload = {
+				user: username,
+				text: textBox
+			};
+			switch (dataChannel.readyState) {
+				case "connecting":
+					console.log("Connection not open; queueing: ");
+					// sendQueue.push(msg);
+					break;
+				case "open":
+					// sendQueue.forEach((msg) => dataChannel.send(msg));
+					setMessages(messages.concat(payload));
+					dataChannel.send(JSON.stringify(payload));
+					break;
+				case "closing":
+					console.log("Attempted to send message while closing: ");
+					break;
+				case "closed":
+					console.log("Error! Attempt to send while connection closed.");
+					break;
+				default:
+					break;
+			}
 		}
 	};
 	return (
@@ -269,7 +273,7 @@ export default function Room() {
 							messages.map((message, messageIndex) => {
 								return (
 									<div key={messageIndex} className="chat-message">
-										{message.user === username ? 'You': 'Stranger'}: {message.text}
+										{message.user === username ? 'You' : 'Stranger'}: {message.text}
 									</div>
 								);
 							})
@@ -290,4 +294,9 @@ export default function Room() {
 			</div>
 		</div>
 	);
+}
+
+interface Message {
+	user: string,
+	text: string
 }
