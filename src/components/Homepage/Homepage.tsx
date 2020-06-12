@@ -8,8 +8,8 @@ export default function Homepage() {
             <Header />
             <div id="home-body">
                 <button>
-                <Link to="/room">Start Queue</Link>
-                    </button>
+                    <Link to="/room">Start Queue</Link>
+                </button>
             </div>
         </div>
     );
