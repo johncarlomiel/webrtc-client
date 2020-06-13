@@ -2,21 +2,21 @@ import React, { useRef } from 'react';
 import Header from '../Header/Header';
 import './Homepage.scss';
 import { Link } from 'react-router-dom';
-import { Button, Modal } from 'semantic-ui-react'
+import { Button, Modal, StrictModalProps } from 'semantic-ui-react'
 import { useEffect } from 'react';
 import { useState } from 'react';
 import WebSocketClient from '../../models/WebSocketClient';
 import Swal from 'sweetalert2'
 
 export default function Homepage() {
-  const timer = useRef(null);
-  const [timerModal, setTimerModal] = useState({
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const [timerModal, setTimerModal] = useState<StrictModalProps>({
     size: 'tiny',
-    open: false
+    open: false,
   });
   const [elapsedTime, setElapsedTime] = useState(1);
 
-  const [queueStatus, setQueueStatus] = useState();
+  const [queueStatus, setQueueStatus] = useState<State>();
 
   useEffect(() => {
     WebSocketClient.ws.onopen = () => {
@@ -52,16 +52,16 @@ export default function Homepage() {
     }
   }, []);
 
-  const breakMatch = (data) => {
+  const breakMatch = (data: Object) => {
     console.log(data);
   };
 
-  const matchReady = (data) => {
+  const matchReady = (data: Object) => {
     alert('Match Ready');
     console.log(data);
   };
 
-  const onReceiveQueueInfo = ({ roomId }) => {
+  const onReceiveQueueInfo = ({ roomId }: { roomId: string }) => {
     closeModal();
     Swal.fire({
       title: 'Match found',
@@ -79,14 +79,15 @@ export default function Homepage() {
 
   const startQueue = () => {
     console.log('Starting Queue')
-    setQueueStatus('queuing');
+    setQueueStatus(State.QUEUE);
     setTimerModal(timerModal => {
       return {
         ...timerModal,
         open: true
       };
     });
-    timer.current = setInterval(() =>  setElapsedTime(elapsedTime => elapsedTime + 1), 1000);
+
+    timer.current = setInterval(() => setElapsedTime(elapsedTime => elapsedTime + 1), 1000);
 
     WebSocketClient.sendMessage({
       feature: 'peerToPeer',
@@ -94,14 +95,14 @@ export default function Homepage() {
     });
   };
 
-  const invitationResponse = (response, roomId) => {
+  const invitationResponse = (response: string, roomId: string) => {
     WebSocketClient.sendMessage({
       feature: 'peerToPeer',
       type: 'invitation-response',
       data: {
         roomId, response
       }
-    }); 
+    });
   };
 
   const closeModal = () => {
@@ -111,7 +112,10 @@ export default function Homepage() {
         open: false
       };
     });
-    clearInterval(timer.current);
+
+    if (timer.current) {
+      clearInterval(timer.current);
+    }
     setElapsedTime(1);
 
     WebSocketClient.sendMessage({
@@ -120,8 +124,8 @@ export default function Homepage() {
     });
   };
 
-  const getModalState = (state) => {
-    const modalState = {
+  const getModalState = (state: State) => {
+    const modalState: ModalState = {
       queuing: {
         header: 'Searching for a match',
         content: `${elapsedTime} Seconds`
@@ -131,11 +135,12 @@ export default function Homepage() {
         content: 'Please wait for the others to accept the invitation'
       }
     };
-    return state ? modalState[state] : { header: '', content: ''};
+    return modalState[state];
   }
 
-  
-  const { header, content } = getModalState(queueStatus);
+
+  const { header, content } = queueStatus ? getModalState(queueStatus) : { header: '', content: '' };
+
   return (
     <div id="home-page">
       <Header />
@@ -159,4 +164,20 @@ export default function Homepage() {
 
     </div>
   );
+}
+
+interface ModalContent {
+  header: string,
+  content: string
+}
+
+interface ModalState {
+  queuing: ModalContent,
+  waiting: ModalContent
+}
+
+
+enum State {
+  QUEUE = 'queuing',
+  WAITING = 'waiting'
 }
