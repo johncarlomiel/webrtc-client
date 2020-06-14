@@ -1,22 +1,20 @@
-import React, { useRef } from 'react';
-import Header from '../Header/Header';
-import './Homepage.scss';
+import React, { useRef, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Modal, StrictModalProps } from 'semantic-ui-react'
-import { useEffect } from 'react';
-import { useState } from 'react';
+import Header from '../Header/Header';
 import WebSocketClient from '../../models/WebSocketClient';
 import Swal from 'sweetalert2'
+import SimpleModal, { SimpleModalHandles } from '../sub-components/SimpleModal';
+import isEmpty from 'lodash/isEmpty';
+import './Homepage.scss';
 
 export default function Homepage() {
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  const [timerModal, setTimerModal] = useState<StrictModalProps>({
-    size: 'tiny',
-    open: false,
-  });
   const [elapsedTime, setElapsedTime] = useState(1);
 
   const [queueStatus, setQueueStatus] = useState<State>();
+
+  const timerModal = useRef<SimpleModalHandles>();
 
   useEffect(() => {
     WebSocketClient.ws.onopen = () => {
@@ -31,7 +29,7 @@ export default function Homepage() {
           onReceiveQueueInfo(data);
           break;
         case 'break-match':
-          breakMatch(data);
+          breakMatch();
           break;
         case 'match-ready':
           matchReady(data);
@@ -52,13 +50,23 @@ export default function Homepage() {
     }
   }, []);
 
-  const breakMatch = (data: Object) => {
-    console.log(data);
+  const breakMatch = () => {
+    Swal.close();
+    closeModal();
   };
+
+  const closeModal = () => {
+    if (timerModal.current) {
+      timerModal.current.toggle();
+    }
+    if (timer.current) {
+      clearInterval(timer.current);
+    }
+    setElapsedTime(1);
+  }
 
   const matchReady = (data: Object) => {
     alert('Match Ready');
-    console.log(data);
   };
 
   const onReceiveQueueInfo = ({ roomId }: { roomId: string }) => {
@@ -72,20 +80,21 @@ export default function Homepage() {
       cancelButtonColor: '#d33',
       confirmButtonText: 'Accept'
     }).then((result) => {
-      let response = result.value ? 'accept' : 'reject';
-      invitationResponse(response, roomId);
+      console.log('Result >> ', result);
+      if (!isEmpty(result)) {
+        let response = result.value ? 'accept' : 'reject';
+        console.log('Response', result);
+        invitationResponse(response, roomId);
+      }
     });
   };
 
   const startQueue = () => {
-    console.log('Starting Queue')
     setQueueStatus(State.QUEUE);
-    setTimerModal(timerModal => {
-      return {
-        ...timerModal,
-        open: true
-      };
-    });
+
+    if(timerModal.current) {
+      timerModal.current.toggle();
+    }
 
     timer.current = setInterval(() => setElapsedTime(elapsedTime => elapsedTime + 1), 1000);
 
@@ -105,24 +114,12 @@ export default function Homepage() {
     });
   };
 
-  const closeModal = () => {
-    setTimerModal(timerModal => {
-      return {
-        ...timerModal,
-        open: false
-      };
-    });
-
-    if (timer.current) {
-      clearInterval(timer.current);
-    }
-    setElapsedTime(1);
-
+  const cancelModalCb = () => {
     WebSocketClient.sendMessage({
       feature: 'peerToPeer',
       type: 'cancel-queue'
     });
-  };
+  }
 
   const getModalState = (state: State) => {
     const modalState: ModalState = {
@@ -152,15 +149,12 @@ export default function Homepage() {
         />
       </div>
 
-      <Modal size={timerModal.size} open={timerModal.open} onClose={closeModal}>
-        <Modal.Header className="timer-modal-head">{header}</Modal.Header>
-        <Modal.Content>
-          <p>{content}</p>
-        </Modal.Content>
-        <Modal.Actions>
-          <Button negative onClick={closeModal} content="Cancel" />
-        </Modal.Actions>
-      </Modal>
+      <SimpleModal
+        content={content}
+        header={header}
+        options={{ size: 'small' }}
+        onCloseCb={cancelModalCb}
+        ref={timerModal} />
 
     </div>
   );
@@ -175,7 +169,6 @@ interface ModalState {
   queuing: ModalContent,
   waiting: ModalContent
 }
-
 
 enum State {
   QUEUE = 'queuing',
