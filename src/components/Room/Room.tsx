@@ -3,32 +3,21 @@ import WebSocketClient from '../../models/WebSocketClient';
 import Header from '../Header/Header';
 import { chats } from './chat';
 import './Room.scss';
+
 const offerOptions: RTCOfferOptions = {
 	offerToReceiveAudio: true,
 	offerToReceiveVideo: true
 };
 
-const localStreamOptions = {
-	video: {
-		frameRate: 60,
-		width: {
-			min: 320,
-			max: 1280
-		},
-		height: {
-			min: 180,
-			max: 720
-		},
-		facingMode: "user"
-	}, audio: false
+const localStreamOptions: MediaStreamConstraints = {
+  audio: false,
+  video: false
 };
 
-
-
-export default function Room() {
+export default function Room(props: any) {
 	const myPeerConnection = new RTCPeerConnection();
-	let role = '';
-	let roomId = '';
+	let storedRole = '';
+	let storedRoomId = '';
 	let myConnectedCandidates: RTCIceCandidate[] = [];
 	let localVid = useRef<HTMLVideoElement>(null);
 	let remoteVid = useRef<HTMLVideoElement>(null);
@@ -44,24 +33,21 @@ export default function Room() {
 
 
 	useEffect(() => {
-		WebSocketClient.ws.onopen = () => {
-			// on connecting, do nothing but log it to the console
-			console.log('Websocket Connected');
-			startQueue();
-		}
+    sendReadyToPairStatus();
+    
 
 		WebSocketClient.ws.onmessage = async evt => {
 			const parsedMessage = JSON.parse(evt.data);
 			const { type, data } = parsedMessage;
 			switch (type) {
+        case 'handshake-ready':
+          onHandshakeReady(data);
+          break;
 				case 'offer':
 					onOffer(data);
 					break;
 				case 'answer':
 					onAnswer(data);
-					break;
-				case 'received-queue-info':
-					onReceiveQueueInfo(data);
 					break;
 				case 'add-candidate':
 					onAddCandidate(data);
@@ -75,37 +61,29 @@ export default function Room() {
 			console.log(evt)
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+  }, []);
+  
 
-	const onOffer = async (data: { offer: RTCSessionDescriptionInit }) => {
-		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-		const answer = await myPeerConnection.createAnswer();
-		myPeerConnection.setLocalDescription(answer);
-		const payload = {
-			type: 'receive-answer',
-			data: {
-				answer,
-				roomId
-			},
-			feature: 'peerToPeer'
-		}
-		sendMessageToServer(payload);
-	}
+  const onHandshakeReady = async ({ username, role, roomId}: { username: string, role: string, roomId: string}) => {
+    console.log('OnHandshake');
 
-	const onAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
-		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-	}
-
-	const onReceiveQueueInfo = async (data: { username: string, role: string, roomId: string }) => {
-		setUsername(data.username);
-		role = data.role;
-		roomId = data.roomId;
-		if (role === 'initiator') {
+    myPeerConnection.addEventListener('icecandidate', onPRIceCandidate);
+		myPeerConnection.addEventListener('track', onPRTrack);
+		localStream = await navigator.mediaDevices.getUserMedia(localStreamOptions);
+		if(localVid.current) localVid.current.srcObject = localStream;
+		localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
+    setUsername(username);
+		storedRole = role;
+    storedRoomId = roomId;
+    console.log('Role', role);
+    console.log('RoomId', storedRoomId);
+		if (storedRole === 'initiator') {
 			//Create data channel to establish connection to receiver
 			const dataChannel = myPeerConnection.createDataChannel('chat');
 			dataChannel.onopen = onDataChannelOpen;
 			dataChannel.onmessage = onDataChannelMessage;
-			dataChannel.onclose = onDataChannelClose;
+      dataChannel.onclose = onDataChannelClose;
+      console.log('Setting DataChannel', dataChannel);
 			setDataChannel(dataChannel)
 
 			const offer = await myPeerConnection.createOffer(offerOptions);
@@ -114,7 +92,7 @@ export default function Room() {
 				type: 'receive-offer',
 				data: {
 					offer,
-					roomId
+					roomId: storedRoomId
 				},
 				feature: 'peerToPeer'
 			};
@@ -126,6 +104,28 @@ export default function Room() {
 			//Set on data channel to receive when initiator create data channel
 			myPeerConnection.ondatachannel = onPRDataChannel;
 		}
+  }
+
+	const onOffer = async (data: { offer: RTCSessionDescriptionInit }) => {
+    console.log('Offer', data.offer);
+		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+		const answer = await myPeerConnection.createAnswer();
+		myPeerConnection.setLocalDescription(answer);
+		const payload = {
+			type: 'receive-answer',
+			data: {
+				answer,
+				roomId: storedRoomId
+			},
+			feature: 'peerToPeer'
+    }
+    console.log('onOffer Payload', payload)
+		sendMessageToServer(payload);
+	}
+
+	const onAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
+    console.log('Answer', data.answer);
+		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
 	}
 
 	const onAddCandidate = (data: { candidate: RTCIceCandidateInit }) => {
@@ -147,13 +147,26 @@ export default function Room() {
 			type: 'add-candidate',
 			data: {
 				candidate,
-				role,
-				roomId
+				role: storedRole,
+				roomId: storedRoomId
 			},
 			feature: 'peerToPeer'
 		}
 		WebSocketClient.ws.send(JSON.stringify(params));
-	}
+  }
+  
+  const sendReadyToPairStatus = () => {
+    const { params: { roomId } } = props.match;
+    const params = {
+			type: 'ready-handshake',
+			data: {
+				roomId
+			},
+			feature: 'peerToPeer'
+		}
+    WebSocketClient.ws.send(JSON.stringify(params));
+    console.log('params', params);
+  };
 
 	const sendMessageToServer = (payload: Object) => {
 		WebSocketClient.ws.send(JSON.stringify(payload));
@@ -200,26 +213,13 @@ export default function Room() {
 		console.log('Use Effect Message', messages)
 	}, [messages])
 
-
-	const startQueue = async () => {
-		myPeerConnection.addEventListener('icecandidate', onPRIceCandidate);
-		myPeerConnection.addEventListener('track', onPRTrack);
-		localStream = await navigator.mediaDevices.getUserMedia(localStreamOptions);
-		if(localVid.current) localVid.current.srcObject = localStream;
-		localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
-		const payload = {
-			type: 'queue',
-			feature: 'peerToPeer'
-		};
-		sendMessageToServer(payload);
-	}
-
 	const onTextboxChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const { value } = event.target;
 		setTextBox(value);
 	};
 
 	const sendMessage = () => {
+    console.log('SendMessage', dataChannel);
 		if (dataChannel) {
 			const payload = {
 				user: username,

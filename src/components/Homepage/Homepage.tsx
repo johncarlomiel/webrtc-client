@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useHistory } from 'react-router-dom';
 import { Button, Modal, StrictModalProps } from 'semantic-ui-react'
 import Header from '../Header/Header';
 import WebSocketClient from '../../models/WebSocketClient';
@@ -11,7 +11,7 @@ import './Homepage.scss';
 export default function Homepage() {
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const [elapsedTime, setElapsedTime] = useState(1);
-
+  const routeHistory = useHistory();
   const [queueStatus, setQueueStatus] = useState<State>();
 
   const timerModal = useRef<SimpleModalHandles>();
@@ -65,9 +65,9 @@ export default function Homepage() {
     setElapsedTime(1);
   }
 
-  const matchReady = (data: Object) => {
-    alert('Match Ready');
-  };
+  const matchReady = ({ roomId }: { roomId: string}) => (
+    routeHistory.push(`/room/${roomId}`)
+  );
 
   const onReceiveQueueInfo = ({ roomId }: { roomId: string }) => {
     closeModal();
@@ -174,3 +174,4 @@ enum State {
   QUEUE = 'queuing',
   WAITING = 'waiting'
 }
+
