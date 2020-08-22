@@ -1,302 +1,439 @@
 import React, { useEffect, useRef, useState } from "react";
+import { getRoom } from '../../api/room';
+import { isEmpty } from 'lodash';
 import WebSocketClient from '../../models/WebSocketClient';
-import Header from '../Header/Header';
-import { chats } from './chat';
 import './Room.scss';
+import ControlPanel from './sub-components/ControlPanel/ControlPanel';
 
 const offerOptions: RTCOfferOptions = {
-	offerToReceiveAudio: true,
-	offerToReceiveVideo: true
+  offerToReceiveAudio: true,
+  offerToReceiveVideo: true
 };
 
-const localStreamOptions: MediaStreamConstraints = {
-  audio: false,
-  video: false
-};
+enum MediaTrackKind {
+  AUDIO = 'audio',
+  VIDEO = 'video'
+}
 
 export default function Room(props: any) {
-	const myPeerConnection = new RTCPeerConnection();
-	let storedRole = '';
-	let storedRoomId = '';
-	let myConnectedCandidates: RTCIceCandidate[] = [];
-	let localVid = useRef<HTMLVideoElement>(null);
-	let remoteVid = useRef<HTMLVideoElement>(null);
-	let localStream: MediaStream;
+  let myPeerConnection = useRef<RTCPeerConnection>(new RTCPeerConnection());
+  let storedRole = '';
+  let storedRoomId = '';
+  let myConnectedCandidates: RTCIceCandidate[] = [];
+  let localStream = useRef<MediaStream>(new MediaStream());
+  let remoteStream = useRef<MediaStream>(new MediaStream());
+  let localVid = useRef<HTMLVideoElement>(document.createElement('video'));
+  let remoteVid = useRef<HTMLVideoElement>(document.createElement('video'));
+  const [mediaStreamConstrains, setMediaStreamConstrains] = useState<MediaStreamConstraints>({ audio: true, video: true });
+  const [username, setUsername] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [textBox, setTextBox] = useState('');
+  // const [dataChannel, setDataChannel] = useState<RTCDataChannel>();
+  let dataChannel = useRef<RTCDataChannel>();
 
-	const [username, setUsername] = useState('');
-	const [messages, setMessages] = useState<Message[]>([]);
-	const [textBox, setTextBox] = useState('');
-	const [test, setTest] = useState('hehehe');
-	// let dataChannel = myPeerConnection.createDataChannel('chatRoom', { negotiated: true, id: 0 });
-	const [dataChannel, setDataChannel] = useState<RTCDataChannel>();
+  useEffect(() => {
+    checkRoomAvailablity();
 
-
-
-	useEffect(() => {
-    sendReadyToPairStatus();
-    
-
-		WebSocketClient.ws.onmessage = async evt => {
-			const parsedMessage = JSON.parse(evt.data);
-			const { type, data } = parsedMessage;
-			switch (type) {
+    WebSocketClient.ws.onmessage = async evt => {
+      const parsedMessage = JSON.parse(evt.data);
+      const { type, data } = parsedMessage;
+      switch (type) {
         case 'handshake-ready':
           onHandshakeReady(data);
           break;
-				case 'offer':
-					onOffer(data);
-					break;
-				case 'answer':
-					onAnswer(data);
-					break;
-				case 'add-candidate':
-					onAddCandidate(data);
-					break;
-				default:
-					break;
-			}
-		}
+        case 'offer':
+          onOffer(data);
+          break;
+        case 'answer':
+          onAnswer(data);
+          break;
+        case 'add-candidate':
+          onAddCandidate(data);
+          break;
+        case 'disconnect':
+          onDisconnect();
+          break;
+        default:
+          break;
+      }
+    }
 
-		WebSocketClient.ws.onerror = evt => {
-			console.log(evt)
-		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+    WebSocketClient.ws.onerror = evt => {
+      console.log(evt)
+    };
+
+    WebSocketClient.ws.onclose = evt => {
+      alert('Im Closing :)')
+    };
+
+    localVid.current.srcObject = localStream.current;
+    remoteVid.current.srcObject = remoteStream.current;
+
+    myPeerConnection.current.addEventListener('icecandidate', onPRIceCandidate);
+    myPeerConnection.current.addEventListener('track', onPRTrack);
+    myPeerConnection.current.addEventListener('negotiationneeded', onNegotiationNeeded);
+
   }, []);
-  
 
-  const onHandshakeReady = async ({ username, role, roomId}: { username: string, role: string, roomId: string}) => {
-    console.log('OnHandshake');
+  const microphoneClicked = async () => {
+    toggleMediaTrack(MediaTrackKind.AUDIO);
+  };
 
-    myPeerConnection.addEventListener('icecandidate', onPRIceCandidate);
-		myPeerConnection.addEventListener('track', onPRTrack);
-		localStream = await navigator.mediaDevices.getUserMedia(localStreamOptions);
-		if(localVid.current) localVid.current.srcObject = localStream;
-		localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
-    setUsername(username);
-		storedRole = role;
-    storedRoomId = roomId;
-    console.log('Role', role);
-    console.log('RoomId', storedRoomId);
-		if (storedRole === 'initiator') {
-			//Create data channel to establish connection to receiver
-			const dataChannel = myPeerConnection.createDataChannel('chat');
-			dataChannel.onopen = onDataChannelOpen;
-			dataChannel.onmessage = onDataChannelMessage;
-      dataChannel.onclose = onDataChannelClose;
-      console.log('Setting DataChannel', dataChannel);
-			setDataChannel(dataChannel)
+  const onPRTrack = (event: RTCTrackEvent) => {
+    const [receivedStream] = event.streams;
+    if (remoteVid.current && receivedStream) {
+      console.log('Received Stream', receivedStream.getTracks());
+      receivedStream.getTracks().forEach((track) => remoteStream.current.addTrack(track));
+      console.log("Remote Stream", remoteStream.current.getTracks())
+    }
+  };
 
-			const offer = await myPeerConnection.createOffer(offerOptions);
-			myPeerConnection.setLocalDescription(offer);
-			const payload = {
-				type: 'receive-offer',
-				data: {
-					offer,
-					roomId: storedRoomId
-				},
-				feature: 'peerToPeer'
-			};
+  const toggleMediaTrack = async (mediaTrackKind: MediaTrackKind) => {
+    // we need to check whether the microphone is 
+    // already requested and just have a enabled = false
+    const hasSpecifiedTrack = localStream.current.getTracks().some(track => track.kind === mediaTrackKind);
+    console.log('Have Audio Track', hasSpecifiedTrack)
+    if (hasSpecifiedTrack && dataChannel.current) {
+      localStream.current.getTracks().forEach((track) => {
+        if (track.kind === mediaTrackKind) {
+          track.enabled = !track.enabled;
+          console.log('Track', track);
+        }
+      });
 
-			console.log(dataChannel)
-
-			sendMessageToServer(payload);
-		} else {
-			//Set on data channel to receive when initiator create data channel
-			myPeerConnection.ondatachannel = onPRDataChannel;
-		}
+      dataChannel.current.send(JSON.stringify({ payload: { mediaTrackKind }, type: 'toggle-media' }));
+    } else {
+      // If don't have a audio track request the
+      // permission to the user and add it
+      const userMedia = await navigator.mediaDevices.getUserMedia({ audio: mediaTrackKind === MediaTrackKind.AUDIO, video: mediaTrackKind === MediaTrackKind.VIDEO });
+      userMedia.getTracks().forEach((track) => {
+        localStream.current.addTrack(track);
+        myPeerConnection.current.addTrack(track, localStream.current)
+      });
+    }
   }
 
-	const onOffer = async (data: { offer: RTCSessionDescriptionInit }) => {
+  const cameraClicked = async () => {
+    toggleMediaTrack(MediaTrackKind.VIDEO);
+  };
+
+  const stopClicked = () => {
+    WebSocketClient.ws.close();
+    props.history.push('/');
+  };
+
+
+  const onDisconnect = () => {
+    // Stop video and audio tracks
+    const streamTracks = localStream.current.getTracks();
+    streamTracks.forEach((track) => track.stop());
+    props.history.push('/');
+  };
+
+  const onHandshakeReady = async ({ username, role, roomId }: { username: string, role: string, roomId: string }) => {
+    console.log('Handshake ready');
+    storedRole = role;
+    storedRoomId = roomId;
+    setUsername(username);
+
+    if (storedRole === 'initiator') {
+      //Create data channel to establish connection to receiver
+      const myDataChannel = myPeerConnection.current.createDataChannel('chat');
+
+      myDataChannel.onopen = onDataChannelOpen;
+      myDataChannel.onmessage = onDataChannelMessage;
+      myDataChannel.onclose = onDataChannelClose;
+      console.log('Setting DataChannel', dataChannel);
+      dataChannel.current = myDataChannel;
+
+      sendOffer();
+    } else {
+      //Set on data channel to receive when initiator create data channel
+      myPeerConnection.current.ondatachannel = onPRDataChannel;
+    }
+  }
+
+  const sendOffer = async () => {
+    const offer = await myPeerConnection.current.createOffer(offerOptions);
+    myPeerConnection.current.setLocalDescription(offer);
+    const payload = {
+      type: 'receive-offer',
+      data: {
+        offer,
+        roomId: storedRoomId
+      },
+      feature: 'peerToPeer'
+    };
+    sendMessageToServer(payload);
+  };
+
+
+  const onOffer = async (data: { offer: RTCSessionDescriptionInit }) => {
     console.log('Offer', data.offer);
-		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-		const answer = await myPeerConnection.createAnswer();
-		myPeerConnection.setLocalDescription(answer);
-		const payload = {
-			type: 'receive-answer',
-			data: {
-				answer,
-				roomId: storedRoomId
-			},
-			feature: 'peerToPeer'
+    myPeerConnection.current.setRemoteDescription(new RTCSessionDescription(data.offer));
+    const answer = await myPeerConnection.current.createAnswer();
+    myPeerConnection.current.setLocalDescription(answer);
+    const payload = {
+      type: 'receive-answer',
+      data: {
+        answer,
+        roomId: storedRoomId
+      },
+      feature: 'peerToPeer'
     }
     console.log('onOffer Payload', payload)
-		sendMessageToServer(payload);
-	}
-
-	const onAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
-    console.log('Answer', data.answer);
-		myPeerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-	}
-
-	const onAddCandidate = (data: { candidate: RTCIceCandidateInit }) => {
-		var candidate = new RTCIceCandidate({
-			sdpMLineIndex: data.candidate.sdpMLineIndex,
-			candidate: data.candidate.candidate,
-			sdpMid: data.candidate.sdpMid
-		});
-		if (candidate && !myConnectedCandidates.includes(candidate)) {
-			myConnectedCandidates.push(candidate)
-			myPeerConnection.addIceCandidate(candidate);
-		}
-	}
-
-
-
-	const sendCandidate = (candidate: RTCIceCandidate) => {
-		const params = {
-			type: 'add-candidate',
-			data: {
-				candidate,
-				role: storedRole,
-				roomId: storedRoomId
-			},
-			feature: 'peerToPeer'
-		}
-		WebSocketClient.ws.send(JSON.stringify(params));
+    sendMessageToServer(payload);
   }
-  
+
+  const onAnswer = (data: { answer: RTCSessionDescriptionInit }) => {
+    console.log('Answer', data.answer);
+    myPeerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+  }
+
+  const onAddCandidate = (data: { candidate: RTCIceCandidateInit }) => {
+    var candidate = new RTCIceCandidate({
+      sdpMLineIndex: data.candidate.sdpMLineIndex,
+      candidate: data.candidate.candidate,
+      sdpMid: data.candidate.sdpMid
+    });
+    if (candidate && !myConnectedCandidates.includes(candidate)) {
+      myConnectedCandidates.push(candidate)
+      myPeerConnection.current.addIceCandidate(candidate);
+    }
+  }
+
+  const sendCandidate = (candidate: RTCIceCandidate) => {
+    const params = {
+      type: 'add-candidate',
+      data: {
+        candidate,
+        role: storedRole,
+        roomId: storedRoomId
+      },
+      feature: 'peerToPeer'
+    }
+    WebSocketClient.ws.send(JSON.stringify(params));
+  };
+
+  const onNegotiationNeeded = async () => {
+    console.log('onNegotiationNeeded Fired >>> :)');
+    console.log(dataChannel);
+    console.log('Username', username)
+    if (dataChannel.current) {
+      const { current: prConnection } = myPeerConnection;
+      const offer = await prConnection.createOffer();
+      await prConnection.setLocalDescription(offer);
+      console.log(prConnection.localDescription?.type);
+      dataChannel.current.send(JSON.stringify({ payload: { sdp: prConnection.localDescription }, type: 're-negotiate' }));
+    }
+  };
+
+  const checkRoomAvailablity = async () => {
+    const { params: { roomId } } = props.match;
+    const room = await getRoom(roomId);
+
+    if (!isEmpty(room)) {
+      const mediaOption = localStorage.getItem('mediaOption');
+      let defaultMediaStreamConstrains = mediaStreamConstrains;
+
+      if (mediaOption) {
+        defaultMediaStreamConstrains = JSON.parse(mediaOption);
+        setMediaStreamConstrains(defaultMediaStreamConstrains);
+      }
+
+      if (mediaStreamConstrains.audio || mediaStreamConstrains.video) {
+        const userMedia = await navigator.mediaDevices.getUserMedia(defaultMediaStreamConstrains);
+        userMedia.getTracks().forEach(track => {
+          localStream.current.addTrack(track);
+          myPeerConnection.current.addTrack(track, localStream.current);
+        });
+      }
+
+
+      sendReadyToPairStatus();
+    } else {
+      console.log('Should Redirect')
+      // Redirect to the queuing room.
+      props.history.push('/');
+    }
+  };
+
   const sendReadyToPairStatus = () => {
     const { params: { roomId } } = props.match;
     const params = {
-			type: 'ready-handshake',
-			data: {
-				roomId
-			},
-			feature: 'peerToPeer'
-		}
+      type: 'ready-handshake',
+      data: {
+        roomId
+      },
+      feature: 'peerToPeer'
+    }
     WebSocketClient.ws.send(JSON.stringify(params));
-    console.log('params', params);
   };
 
-	const sendMessageToServer = (payload: Object) => {
-		WebSocketClient.ws.send(JSON.stringify(payload));
-	}
+  const sendMessageToServer = (payload: Object) => {
+    WebSocketClient.ws.send(JSON.stringify(payload));
+  }
 
-	const onPRIceCandidate = (event: RTCPeerConnectionIceEvent) => {
-		if (event.candidate) {
-			sendCandidate(event.candidate);
-		}
-	};
+  const onPRIceCandidate = (event: RTCPeerConnectionIceEvent) => {
+    if (event.candidate) {
+      sendCandidate(event.candidate);
+    }
+  };
 
-	const onPRTrack = (event: RTCTrackEvent) => {
-		if(remoteVid.current) {
-			remoteVid.current.srcObject = event.streams[0]
-		}
-	};
 
-	const onPRDataChannel = (event: RTCDataChannelEvent) => {
-		// Receiver received the data channel from initiator
-		const { channel } = event;
-		const dataChannel = channel;
-		dataChannel.onopen = onDataChannelOpen;
-		dataChannel.onmessage = onDataChannelMessage;
-		dataChannel.onclose = onDataChannelClose;
-		setDataChannel(dataChannel);
-		console.log('onPRDataChannel')
-	};
+  const onPRDataChannel = (event: RTCDataChannelEvent) => {
+    // Receiver received the data channel from initiator
+    const { channel } = event;
+    const myDataChannel = channel;
+    myDataChannel.onopen = onDataChannelOpen;
+    myDataChannel.onmessage = onDataChannelMessage;
+    myDataChannel.onclose = onDataChannelClose;
+    dataChannel.current = myDataChannel;
+  };
 
-	const onDataChannelOpen = (event: Event) => {
-		const { target: channel } = event;
-	};
+  const onDataChannelOpen = (event: Event) => {
+    const { target: channel } = event;
+  };
 
-	const onDataChannelClose = (event: Event) => {
-		console.log('data channel Close');
-	};
+  const onDataChannelClose = (event: Event) => {
+  };
 
-	const onDataChannelMessage = (event: MessageEvent) => {
-		const { data } = event;
-		const message = JSON.parse(data);
-		setMessages(prevMessages => prevMessages.concat(message));
-	};
+  const disableRemoteMedia = (mediaTrackKind: 'audio' | 'video') => {
+    remoteStream.current.getTracks().forEach((track) => {
+      console.log('Track Kind > ', track.kind);
+      console.log('Media Track: ', mediaTrackKind)
+      if (track.kind === mediaTrackKind) {
+        track.enabled = !track.enabled;
+      }
+    })
+  };
 
-	useEffect(() => {
-		console.log('Use Effect Message', messages)
-	}, [messages])
+  const onDataChannelMessage = async (event: MessageEvent) => {
+    const { data } = event;
+    const { payload, type } = JSON.parse(data);
+    switch (type) {
+      case 'chat':
+        setMessages(prevMessages => prevMessages.concat(payload));
+        break;
+      case 're-negotiate':
+        const desc = new RTCSessionDescription(payload.sdp);
+        console.log('Type', desc.type);
+        if (desc.type === 'offer') {
+          console.log(dataChannel);
+          if (dataChannel.current && remoteStream.current) {
+            await myPeerConnection.current.setRemoteDescription(desc);
+            const answer = await myPeerConnection.current.createAnswer();
+            await myPeerConnection.current.setLocalDescription(answer);
+            dataChannel.current.send(JSON.stringify({ payload: { sdp: myPeerConnection.current.localDescription }, type: 're-negotiate' }));
 
-	const onTextboxChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-		const { value } = event.target;
-		setTextBox(value);
-	};
 
-	const sendMessage = () => {
+          }
+        } else {
+          await myPeerConnection.current.setRemoteDescription(desc);
+        }
+        break;
+      case 'toggle-media':
+        const { mediaTrackKind } = payload;
+
+        disableRemoteMedia(mediaTrackKind);
+        break;
+      default:
+        break;
+    }
+  };
+
+  useEffect(() => {
+    console.log('Use Effect Message', messages)
+  }, [messages])
+
+  const onTextboxChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const { value } = event.target;
+    setTextBox(value);
+  };
+
+  const sendMessage = () => {
     console.log('SendMessage', dataChannel);
-		if (dataChannel) {
-			const payload = {
-				user: username,
-				text: textBox
-			};
-			switch (dataChannel.readyState) {
-				case "connecting":
-					console.log("Connection not open; queueing: ");
-					// sendQueue.push(msg);
-					break;
-				case "open":
-					// sendQueue.forEach((msg) => dataChannel.send(msg));
-					setMessages(messages.concat(payload));
-					dataChannel.send(JSON.stringify(payload));
-					break;
-				case "closing":
-					console.log("Attempted to send message while closing: ");
-					break;
-				case "closed":
-					console.log("Error! Attempt to send while connection closed.");
-					break;
-				default:
-					break;
-			}
-		}
-	};
-	return (
-		<div id="room">
-			<Header />
+    if (dataChannel.current) {
+      const payload = {
+        user: username,
+        text: textBox
+      };
+      switch (dataChannel.current.readyState) {
+        case "connecting":
+          console.log("Connection not open; queueing: ");
+          // sendQueue.push(msg);
+          break;
+        case "open":
+          // sendQueue.forEach((msg) => dataChannel.send(msg));
+          setMessages(messages.concat(payload));
+          dataChannel.current.send(JSON.stringify({ payload, type: 'chat' }));
+          break;
+        case "closing":
+          console.log("Attempted to send message while closing: ");
+          break;
+        case "closed":
+          console.log("Error! Attempt to send while connection closed.");
+          break;
+        default:
+          break;
+      }
+    }
+  };
 
-			<div id="content-wrapper">
-				<div id="media-container">
-					<div className="user-video">
-						<h3>My Camera</h3>
-						<video ref={localVid} playsInline autoPlay></video>
-					</div>
+  return (
+    <div className="parent-container">
+      <div className="room-container">
+        <div className="media-container">
+          <div className="participant-media">
+            <video ref={localVid} playsInline autoPlay></video>
+            <p>You</p>
+          </div>
+          <div className="participant-media">
+            <video ref={remoteVid} playsInline autoPlay></video>
+            <p>Stranger</p>
+          </div>
+        </div>
+        <div className="chat-container">
+          <div className="chat-header">
+            CHAT
+   				</div>
 
-					<div className="user-video">
-						<h3>Stranger's Camera</h3>
-						<video ref={remoteVid} playsInline autoPlay></video>
-					</div>
-				</div>
+          <div className="chat-content">
+            {
+              messages.map((message, messageIndex) => {
+                return (
+                  <div key={messageIndex} className="chat-message">
+                    {message.user === username ? 'You' : 'Stranger'}: {message.text}
+                  </div>
+                );
+              })
+            }
+          </div>
 
-				<div id="chat-container">
-					<div className="chat-header">
-						CHAT
-					</div>
+          <div className="chat-footer">
+            <div className="chat-textbox">
+              <textarea value={textBox} onChange={onTextboxChange} />
+            </div>
 
-					<div className="chat-content">
-						{
-							messages.map((message, messageIndex) => {
-								return (
-									<div key={messageIndex} className="chat-message">
-										{message.user === username ? 'You' : 'Stranger'}: {message.text}
-									</div>
-								);
-							})
-						}
-					</div>
+            <div className="chat-action-btns">
+              <button className="submit-msg" onClick={sendMessage}>Send</button>
+            </div>
+          </div>
 
-					<div className="chat-footer">
-						<div className="chat-textbox">
-							<textarea value={textBox} onChange={onTextboxChange} />
-						</div>
+        </div>
+      </div>
 
-						<div className="chat-action-btns">
-							<button className="submit-msg" onClick={sendMessage}>Send</button>
-						</div>
-					</div>
-
-				</div>
-			</div>
-		</div>
-	);
+      <div className="toolbar-container">
+        <ControlPanel
+          events={{ camera: cameraClicked, microphone: microphoneClicked, stop: stopClicked }}
+          mediaStreamConstraints={mediaStreamConstrains}
+        />
+      </div>
+    </div>
+  );
 }
 
 interface Message {
-	user: string,
-	text: string
+  user: string,
+  text: string
 }

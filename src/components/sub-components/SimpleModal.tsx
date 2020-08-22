@@ -1,29 +1,40 @@
-import React, { forwardRef, useState, useImperativeHandle, Ref } from "react";
-import { Link } from 'react-router-dom';
+import React, { forwardRef, useState, useImperativeHandle, Ref, useEffect } from "react";
 import { Button, Modal, StrictModalProps } from 'semantic-ui-react'
 
-function SimpleModal({ content, header, onCloseCb, options }: SimpleModalProps, ref: Ref<any>) {
+function SimpleModal({ content, header, onCloseCb, onAcceptCb, options }: SimpleModalProps, ref: Ref<any>) {
   const [isOpen, setOpen] = useState<boolean>(false);
 
   const handles: SimpleModalHandles = {
-    toggle: () => ( setOpen(isOpen => !isOpen ))
+    toggle: () => (setOpen(isOpen => !isOpen))
   };
 
   useImperativeHandle(ref, () => (handles));
 
-  const cancelQueue = () => {
+  const cancel = () => {
     setOpen(false);
-    onCloseCb();
+    if (onCloseCb) onCloseCb();
   };
 
+  useEffect(() => {
+    console.log('isOpen', isOpen)
+  }, [isOpen])
+
+
+  const accept = () => {
+    setOpen(false);
+    if (onAcceptCb) onAcceptCb();
+  }
+
   return (
-    <Modal size={options.size} open={isOpen} onClose={cancelQueue}>
-      <Modal.Header className="timer-modal-head">{header}</Modal.Header>
+    <Modal size={options.size} open={isOpen} onClose={cancel}>
+      {header ? <Modal.Header className="timer-modal-head">{header}</Modal.Header> : null}
       <Modal.Content>
-        <p>{content}</p>
+        {content}
       </Modal.Content>
       <Modal.Actions>
-        <Button negative onClick={cancelQueue} content="Cancel" />
+        {/* If callback doesn't exists don't render the button */}
+        {onAcceptCb ? <Button positive onClick={accept} content="Accept" /> : null}
+        {onCloseCb ? <Button negative onClick={cancel} content="Cancel" /> : null}
       </Modal.Actions>
     </Modal>
   );
@@ -32,9 +43,10 @@ function SimpleModal({ content, header, onCloseCb, options }: SimpleModalProps, 
 export default forwardRef(SimpleModal);
 
 interface SimpleModalProps {
-  content: string,
-  header: string,
-  onCloseCb: Function,
+  content: JSX.Element,
+  header?: string,
+  onCloseCb?: Function,
+  onAcceptCb?: Function,
   options: StrictModalProps
 }
 

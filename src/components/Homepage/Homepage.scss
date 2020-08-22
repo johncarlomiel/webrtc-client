@@ -1,18 +1,16 @@
 #home-page {
-    height: 100vh;
-    overflow-y: hidden;
+  height: 100vh;
+  overflow-y: hidden;
 
-    #home-body {
-        height: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-
-    
+  #home-body {
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
 }
 .timer-modal-head {
-  text-align: center; 
+  text-align: center;
   letter-spacing: 2px;
 }
 
@@ -20,4 +18,9 @@
   text-align: center;
   font-size: large;
   font-weight: bold;
+}
+
+.media-select {
+  width: 100%;
+  padding: 30px !important;
 }

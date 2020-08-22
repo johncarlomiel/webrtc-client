@@ -1,7 +1,7 @@
 import React from 'react';
 import Homepage from './components/Homepage/Homepage';
 import Room from './components/Room/Room';
-import Header from './components/Header/Header';
+import Design from './components/Design';
 import {
 	BrowserRouter as Router,
 	Switch,
@@ -14,6 +14,7 @@ function App() {
 			<Switch>
 				<Route exact path="/" component={Homepage}/>
 				<Route path="/room/:roomId" component={Room}/>
+        <Route path="/design" component={Design}/> 
 			</Switch>
 		</Router>
 	);
