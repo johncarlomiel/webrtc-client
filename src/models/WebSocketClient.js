@@ -1,6 +1,6 @@
 class WebSocketClient {
     constructor() {
-        this.ws = new WebSocket('wss://192.168.100.13:8080');
+        this.ws = new WebSocket(`wss://${process.env.REACT_APP_API_DOMAIN}`);
     }
 
     sendMessage(payload) {
