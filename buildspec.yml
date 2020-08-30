@@ -1,0 +1,16 @@
+version: 0.2
+
+phases:
+    install:
+        commands:
+            - npm install
+    build:
+        commands:
+            - react-scripts build
+    post_build:
+        commands:
+            - echo Build Completed on `date`
+artifacts:
+    files:
+        - '**/*'
+    base-directory: 'build'
