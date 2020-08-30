@@ -6,7 +6,7 @@ phases:
             - npm install
     build:
         commands:
-            - react-scripts build
+            - npm run build
     post_build:
         commands:
             - echo Build Completed on `date`
