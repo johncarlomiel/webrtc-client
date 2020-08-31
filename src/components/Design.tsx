@@ -8,7 +8,7 @@ export default function Design() {
         <div className="media-container">
           <div className="participant-media">
             <video autoPlay ></video>
-            <p>Stranger's Name :)</p>
+            <p>Updated XD Name :)</p>
           </div>
           <div className="participant-media">
             <video autoPlay ></video>
