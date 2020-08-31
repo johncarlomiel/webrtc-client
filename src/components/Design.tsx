@@ -16,7 +16,7 @@ export default function Design() {
           </div>
         </div>
         <div className="chat-container">
-          Chat Container
+          Chat Container Updated HEHEHE
       </div>
       </div>
 
