@@ -29,7 +29,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev": "HTTPS=true SSL_CRT_FILE=cert.pem SSL_KEY_FILE=key.pem npm start"
   },
   "eslintConfig": {
     "extends": "react-app"
