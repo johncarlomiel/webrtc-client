@@ -20,7 +20,7 @@ export default function Room(props: any) {
   let storedRole = '';
   let storedRoomId = '';
   let myConnectedCandidates: RTCIceCandidate[] = [];
-  let localStream = useRef<MediaStream>(new MediaStream());
+  const [localStream, setLocalStream] = useState<MediaStream>(new MediaStream())
   let remoteStream = useRef<MediaStream>(new MediaStream());
   let localVid = useRef<HTMLVideoElement>(document.createElement('video'));
   let remoteVid = useRef<HTMLVideoElement>(document.createElement('video'));
@@ -28,6 +28,7 @@ export default function Room(props: any) {
   const [username, setUsername] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [textBox, setTextBox] = useState('');
+
   // const [dataChannel, setDataChannel] = useState<RTCDataChannel>();
   let dataChannel = useRef<RTCDataChannel>();
 
@@ -66,7 +67,7 @@ export default function Room(props: any) {
       alert('Im Closing :)')
     };
 
-    localVid.current.srcObject = localStream.current;
+    localVid.current.srcObject = localStream;
     remoteVid.current.srcObject = remoteStream.current;
 
     myPeerConnection.current.addEventListener('icecandidate', onPRIceCandidate);
@@ -91,15 +92,15 @@ export default function Room(props: any) {
   const toggleMediaTrack = async (mediaTrackKind: MediaTrackKind) => {
     // we need to check whether the microphone is 
     // already requested and just have a enabled = false
-    const hasSpecifiedTrack = localStream.current.getTracks().some(track => track.kind === mediaTrackKind);
-    console.log('Have Audio Track', hasSpecifiedTrack)
+    const hasSpecifiedTrack = localStream.getTracks().some(track => track.kind === mediaTrackKind);
     if (hasSpecifiedTrack && dataChannel.current) {
-      localStream.current.getTracks().forEach((track) => {
+      localStream.getTracks().forEach((track) => {
         if (track.kind === mediaTrackKind) {
           track.enabled = !track.enabled;
           console.log('Track', track);
         }
       });
+
 
       dataChannel.current.send(JSON.stringify({ payload: { mediaTrackKind }, type: 'toggle-media' }));
     } else {
@@ -107,10 +108,14 @@ export default function Room(props: any) {
       // permission to the user and add it
       const userMedia = await navigator.mediaDevices.getUserMedia({ audio: mediaTrackKind === MediaTrackKind.AUDIO, video: mediaTrackKind === MediaTrackKind.VIDEO });
       userMedia.getTracks().forEach((track) => {
-        localStream.current.addTrack(track);
-        myPeerConnection.current.addTrack(track, localStream.current)
+        localStream.addTrack(track);
+        myPeerConnection.current.addTrack(track, localStream);
       });
     }
+    const newMediaStream = new MediaStream();
+    localStream.getTracks().forEach(track => newMediaStream.addTrack(track));
+
+    setLocalStream(newMediaStream);
   }
 
   const cameraClicked = async () => {
@@ -125,7 +130,7 @@ export default function Room(props: any) {
 
   const onDisconnect = () => {
     // Stop video and audio tracks
-    const streamTracks = localStream.current.getTracks();
+    const streamTracks = localStream.getTracks();
     streamTracks.forEach((track) => track.stop());
     props.history.push('/');
   };
@@ -229,33 +234,43 @@ export default function Room(props: any) {
   };
 
   const checkRoomAvailablity = async () => {
-    const { params: { roomId } } = props.match;
-    const room = await getRoom(roomId);
+    try {
+      const { params: { roomId } } = props.match;
+      const room = await getRoom(roomId);
 
-    if (!isEmpty(room)) {
-      const mediaOption = localStorage.getItem('mediaOption');
-      let defaultMediaStreamConstrains = mediaStreamConstrains;
+      if (!isEmpty(room)) {
+        const mediaOption = localStorage.getItem('mediaOption');
+        let defaultMediaStreamConstrains = mediaStreamConstrains;
 
-      if (mediaOption) {
-        defaultMediaStreamConstrains = JSON.parse(mediaOption);
-        setMediaStreamConstrains(defaultMediaStreamConstrains);
+        if (mediaOption) {
+          defaultMediaStreamConstrains = JSON.parse(mediaOption);
+          setMediaStreamConstrains(defaultMediaStreamConstrains);
+        }
+
+        if (defaultMediaStreamConstrains.audio || defaultMediaStreamConstrains.video) {
+          const userMedia = await navigator.mediaDevices.getUserMedia(defaultMediaStreamConstrains);
+
+          userMedia.getTracks().forEach(track => {
+            localStream.addTrack(track);
+            myPeerConnection.current.addTrack(track, localStream);
+          });
+
+          const newMediaStream = new MediaStream();
+          localStream.getTracks().forEach(track => newMediaStream.addTrack(track));
+          setLocalStream(newMediaStream);
+        }
+
+
+      } else {
+        console.log('Should Redirect')
+        // Redirect to the queuing room.
+        props.history.push('/');
       }
-
-      if (mediaStreamConstrains.audio || mediaStreamConstrains.video) {
-        const userMedia = await navigator.mediaDevices.getUserMedia(defaultMediaStreamConstrains);
-        userMedia.getTracks().forEach(track => {
-          localStream.current.addTrack(track);
-          myPeerConnection.current.addTrack(track, localStream.current);
-        });
-      }
-
-
-      sendReadyToPairStatus();
-    } else {
-      console.log('Should Redirect')
-      // Redirect to the queuing room.
-      props.history.push('/');
+    } catch (error) {
+      console.log('checkRoomAvailablity Error', error);
     }
+
+    sendReadyToPairStatus();
   };
 
   const sendReadyToPairStatus = () => {
@@ -426,7 +441,7 @@ export default function Room(props: any) {
       <div className="toolbar-container">
         <ControlPanel
           events={{ camera: cameraClicked, microphone: microphoneClicked, stop: stopClicked }}
-          mediaStreamConstraints={mediaStreamConstrains}
+          mediaStream={localStream}
         />
       </div>
     </div>

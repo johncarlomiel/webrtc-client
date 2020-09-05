@@ -1,17 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from 'semantic-ui-react';
 import './ControlPanel.scss';
 
-export default function ControlPanel({ mediaStreamConstraints: { video, audio }, events }: Props) {
+export default function ControlPanel({ mediaStream, events }: Props) {
 
-  const getMediaColorStatus = (mediaStreamConstraint: boolean | MediaTrackConstraints | undefined) => {
-    return mediaStreamConstraint ? 'blue' : 'grey';
+  useEffect(() => {
+    console.log('MediaStream', mediaStream)
+    console.log(mediaStream.getAudioTracks())
+  }, [mediaStream])
+  const getMediaColorStatus = (mediaStreamTrack: MediaStreamTrack[]) => {
+    return mediaStreamTrack.length > 0 && mediaStreamTrack.every(track => track.enabled) ? 'blue' : 'grey';
   };
 
   return (
     <div className='control-panel'>
-      <Button onClick={() => events.camera()} icon='video camera' color={getMediaColorStatus(video)} size='huge' circular />
-      <Button onClick={() => events.microphone()} icon='microphone' color={getMediaColorStatus(audio)} size='huge' circular />
+      <Button onClick={() => events.camera()} icon='video camera' color={getMediaColorStatus(mediaStream.getVideoTracks() || [])} size='huge' circular />
+      <Button onClick={() => events.microphone()} icon='microphone' color={getMediaColorStatus(mediaStream.getAudioTracks() || [])} size='huge' circular />
       <Button onClick={() => events.stop()} icon='stop' color='red' size='huge' circular />
     </div>
   );
@@ -19,7 +23,7 @@ export default function ControlPanel({ mediaStreamConstraints: { video, audio },
 
 
 interface Props {
-  mediaStreamConstraints: MediaStreamConstraints,
+  mediaStream: MediaStream,
   events: {
     camera: Function,
     microphone: Function,
