@@ -4,7 +4,9 @@ import { isEmpty } from 'lodash';
 import WebSocketClient from '../../models/WebSocketClient';
 import './Room.scss';
 import ControlPanel from './sub-components/ControlPanel/ControlPanel';
-
+import { Button, Comment, Form, Header } from 'semantic-ui-react'
+import { icons, getRandomIcon } from '../../data/icons';
+import { format, formatDistanceToNow } from 'date-fns'
 const offerOptions: RTCOfferOptions = {
   offerToReceiveAudio: true,
   offerToReceiveVideo: true
@@ -14,6 +16,9 @@ enum MediaTrackKind {
   AUDIO = 'audio',
   VIDEO = 'video'
 }
+
+const myIcon = getRandomIcon();
+const strangerIcon = getRandomIcon();
 
 export default function Room(props: any) {
   let myPeerConnection = useRef<RTCPeerConnection>(new RTCPeerConnection());
@@ -28,6 +33,10 @@ export default function Room(props: any) {
   const [username, setUsername] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [textBox, setTextBox] = useState('');
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState<boolean>(false);
+  const controlPanelRef = useRef();
+  const chatBoxRef = useRef<HTMLDivElement>(document.createElement('div'));
+
 
   // const [dataChannel, setDataChannel] = useState<RTCDataChannel>();
   let dataChannel = useRef<RTCDataChannel>();
@@ -64,7 +73,7 @@ export default function Room(props: any) {
     };
 
     WebSocketClient.ws.onclose = evt => {
-      alert('Im Closing :)')
+      console.log('Websocket Closing')
     };
 
     localVid.current.srcObject = localStream;
@@ -221,9 +230,6 @@ export default function Room(props: any) {
   };
 
   const onNegotiationNeeded = async () => {
-    console.log('onNegotiationNeeded Fired >>> :)');
-    console.log(dataChannel);
-    console.log('Username', username)
     if (dataChannel.current) {
       const { current: prConnection } = myPeerConnection;
       const offer = await prConnection.createOffer();
@@ -308,6 +314,10 @@ export default function Room(props: any) {
 
   const onDataChannelOpen = (event: Event) => {
     const { target: channel } = event;
+    console.log('On Data Channel Open')
+    if (WebSocketClient.ws.readyState === WebSocket.OPEN) {
+      WebSocketClient.ws.close();
+    }
   };
 
   const onDataChannelClose = (event: Event) => {
@@ -357,47 +367,69 @@ export default function Room(props: any) {
     }
   };
 
+
   useEffect(() => {
-    console.log('Use Effect Message', messages)
+    console.log('Use Effect Message', messages);
+    const childs = chatBoxRef.current.children;
+    if (childs.length > 0) {
+      const lastChild = childs[childs.length - 1];
+      lastChild.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
-  const onTextboxChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const { value } = event.target;
+  const onTextboxChange = (value: any) => {
     setTextBox(value);
   };
 
   const sendMessage = () => {
-    console.log('SendMessage', dataChannel);
-    if (dataChannel.current) {
-      const payload = {
-        user: username,
-        text: textBox
-      };
-      switch (dataChannel.current.readyState) {
-        case "connecting":
-          console.log("Connection not open; queueing: ");
-          // sendQueue.push(msg);
-          break;
-        case "open":
-          // sendQueue.forEach((msg) => dataChannel.send(msg));
-          setMessages(messages.concat(payload));
-          dataChannel.current.send(JSON.stringify({ payload, type: 'chat' }));
-          break;
-        case "closing":
-          console.log("Attempted to send message while closing: ");
-          break;
-        case "closed":
-          console.log("Error! Attempt to send while connection closed.");
-          break;
-        default:
-          break;
+    if (textBox) {
+      console.log('SendMessage', dataChannel);
+      if (dataChannel.current) {
+        const payload = {
+          user: username,
+          text: textBox,
+          createdAt: new Date().toString()
+        };
+        switch (dataChannel.current.readyState) {
+          case "connecting":
+            console.log("Connection not open; queueing: ");
+            // sendQueue.push(msg);
+            break;
+          case "open":
+            // sendQueue.forEach((msg) => dataChannel.send(msg));
+            setMessages(messages.concat(payload));
+            setTextBox('');
+
+            dataChannel.current.send(JSON.stringify({ payload, type: 'chat' }));
+            break;
+          case "closing":
+            console.log("Attempted to send message while closing: ");
+            break;
+          case "closed":
+            console.log("Error! Attempt to send while connection closed.");
+            break;
+          default:
+            break;
+        }
       }
     }
   };
 
   return (
     <div className="parent-container">
-      <div className="room-container">
+      <div className="room-container" onMouseEnter={() => {
+        setIsControlPanelOpen(true);
+
+        setTimeout(() => {
+          if (controlPanelRef.current) {
+            const { isOnFocusStatus }: any = controlPanelRef.current;
+            console.log('IsOnFocusStataus', isOnFocusStatus())
+            if (!isOnFocusStatus()) {
+              setIsControlPanelOpen(false);
+            }
+          }
+        }, 800);
+      }}>
         <div className="media-container">
           <div className="participant-media">
             <video ref={localVid} playsInline autoPlay></video>
@@ -408,47 +440,56 @@ export default function Room(props: any) {
             <p>Stranger</p>
           </div>
         </div>
-        <div className="chat-container">
-          <div className="chat-header">
-            CHAT
-   				</div>
+        <div style={{ display: 'grid', gridTemplateRows: '80% 20%' }}>
+          <Comment.Group className='max-width-initial'>
+            <Header as='h1' dividing>
+              Chat
+          </Header>
 
-          <div className="chat-content">
-            {
-              messages.map((message, messageIndex) => {
-                return (
-                  <div key={messageIndex} className="chat-message">
-                    {message.user === username ? 'You' : 'Stranger'}: {message.text}
-                  </div>
-                );
-              })
-            }
-          </div>
-
-          <div className="chat-footer">
-            <div className="chat-textbox">
-              <textarea value={textBox} onChange={onTextboxChange} />
+            <div ref={chatBoxRef} style={{ overflowY: 'scroll', maxHeight: '70vh' }}>
+              {
+                messages.map((message, messageIndex) => {
+                  return (
+                    <Comment key={messageIndex}>
+                      <Comment.Avatar src={message.user === username ? myIcon.src : strangerIcon.src} />
+                      <Comment.Content>
+                        <Comment.Author as='a'>{message.user === username ? 'You' : 'Stranger'}</Comment.Author>
+                        <Comment.Metadata>
+                          <div>{formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}</div>
+                        </Comment.Metadata>
+                        <Comment.Text>{message.text}</Comment.Text>
+                      </Comment.Content>
+                    </Comment>
+                  );
+                })
+              }
             </div>
-
-            <div className="chat-action-btns">
-              <button className="submit-msg" onClick={sendMessage}>Send</button>
-            </div>
-          </div>
-
+          </Comment.Group>
+          <Form reply >
+            <Form.TextArea value={textBox} onChange={(_, { value }) => onTextboxChange(value)} />
+            <Button content='Send' onClick={sendMessage} labelPosition='left' icon='edit' primary />
+          </Form>
         </div>
       </div>
 
-      <div className="toolbar-container">
-        <ControlPanel
-          events={{ camera: cameraClicked, microphone: microphoneClicked, stop: stopClicked }}
-          mediaStream={localStream}
-        />
+      <div onMouseEnter={() => setIsControlPanelOpen(true)}>
+        <Header as='h3' disabled textAlign='center'>
+          Hover here to display the control panel
+      </Header>
       </div>
+
+      <ControlPanel
+        ref={controlPanelRef}
+        events={{ camera: cameraClicked, microphone: microphoneClicked, stop: stopClicked }}
+        mediaStream={localStream}
+        isOpen={isControlPanelOpen}
+      />
     </div>
   );
 }
 
 interface Message {
   user: string,
-  text: string
+  text: string,
+  createdAt: string
 }

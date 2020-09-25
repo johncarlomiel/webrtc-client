@@ -15,7 +15,7 @@ import WebSocketClient from '../../models/WebSocketClient';
 import Swal from 'sweetalert2'
 import SimpleModal, { SimpleModalHandles } from '../sub-components/SimpleModal';
 import isEmpty from 'lodash/isEmpty';
-import './Homepage.scss';
+import './Homepage.scss'
 
 enum State {
   QUEUE = 'queuing',
@@ -87,7 +87,7 @@ export default function Homepage() {
   }, []);
 
   const breakMatch = () => {
-    if(matchReadyModal.current) {
+    if (matchReadyModal.current) {
       matchReadyModal.current.toggle();
     }
   };
@@ -111,6 +111,7 @@ export default function Homepage() {
     setRoomId(roomId);
     matchReadyModal.current?.toggle();
   };
+
 
   const startQueue = () => {
     setQueueStatus(State.QUEUE);
@@ -202,7 +203,7 @@ export default function Homepage() {
         <Button
           icon='play'
           onClick={startQueue}
-          content='Start Queue'
+          content='Start'
           size='massive'
         />
       </div>
