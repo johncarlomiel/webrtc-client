@@ -132,9 +132,17 @@ export default function Room(props: any) {
   };
 
   const stopClicked = () => {
-    WebSocketClient.ws.close();
-    props.history.push('/');
+    dataChannel.current?.send(JSON.stringify({ type: 'end-video-call' }));
+    endCall();
   };
+
+  const endCall = () => {
+    if (WebSocketClient.ws.readyState === WebSocket.OPEN) {
+      WebSocketClient.ws.close();
+    }
+
+    props.history.push('/');
+  }
 
 
   const onDisconnect = () => {
@@ -350,8 +358,6 @@ export default function Room(props: any) {
             const answer = await myPeerConnection.current.createAnswer();
             await myPeerConnection.current.setLocalDescription(answer);
             dataChannel.current.send(JSON.stringify({ payload: { sdp: myPeerConnection.current.localDescription }, type: 're-negotiate' }));
-
-
           }
         } else {
           await myPeerConnection.current.setRemoteDescription(desc);
@@ -359,8 +365,10 @@ export default function Room(props: any) {
         break;
       case 'toggle-media':
         const { mediaTrackKind } = payload;
-
         disableRemoteMedia(mediaTrackKind);
+        break;
+      case 'end-video-call':
+        endCall();
         break;
       default:
         break;

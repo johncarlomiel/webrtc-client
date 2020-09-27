@@ -42,8 +42,13 @@ export default function Homepage() {
   const matchReadyModal = useRef<SimpleModalHandles>();
   const [mediaStream, setMediaStream] = useState({ video: true, audio: true });
 
+
   useEffect(() => {
     // Load the default settings on localStorage
+    if (WebSocketClient.ws.readyState === WebSocket.CLOSED) {
+      WebSocketClient.init();
+    }
+    
     const storedMediaOption = localStorage.getItem('mediaOption');
     if (storedMediaOption) {
       setMediaStream(JSON.parse(storedMediaOption));
@@ -114,6 +119,8 @@ export default function Homepage() {
 
 
   const startQueue = () => {
+
+
     setQueueStatus(State.QUEUE);
 
     if (timerModal.current) {
