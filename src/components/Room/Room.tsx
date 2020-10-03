@@ -1,12 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
+import WebSocketClient from '../../models/WebSocketClient';
+import ControlPanel from './sub-components/ControlPanel/ControlPanel';
 import { getRoom } from '../../api/room';
 import { isEmpty } from 'lodash';
-import WebSocketClient from '../../models/WebSocketClient';
-import './Room.scss';
-import ControlPanel from './sub-components/ControlPanel/ControlPanel';
-import { Button, Comment, Form, Header } from 'semantic-ui-react'
+import { Button, Comment, Form, Header, Icon } from 'semantic-ui-react'
 import { icons, getRandomIcon } from '../../data/icons';
 import { format, formatDistanceToNow } from 'date-fns'
+import './Room.scss';
+import Editor from 'draft-js-plugins-editor';
+import createEmojiPlugin from 'draft-js-emoji-plugin';
+import { convertToRaw, EditorState } from 'draft-js';
+import 'draft-js-emoji-plugin/lib/plugin.css';
+
 const offerOptions: RTCOfferOptions = {
   offerToReceiveAudio: true,
   offerToReceiveVideo: true
@@ -19,6 +24,8 @@ enum MediaTrackKind {
 
 const myIcon = getRandomIcon();
 const strangerIcon = getRandomIcon();
+const emojiPlugin = createEmojiPlugin();
+const { EmojiSuggestions, EmojiSelect } = emojiPlugin;
 
 export default function Room(props: any) {
   let myPeerConnection = useRef<RTCPeerConnection>(new RTCPeerConnection());
@@ -36,7 +43,12 @@ export default function Room(props: any) {
   const [isControlPanelOpen, setIsControlPanelOpen] = useState<boolean>(false);
   const controlPanelRef = useRef();
   const chatBoxRef = useRef<HTMLDivElement>(document.createElement('div'));
-
+  const [isEmojiShowing, setIsEmojiShowing] = useState<boolean>(false);
+  const [editorState, setEditorState] = useState(() =>
+    EditorState.createEmpty(),
+  );
+  const editorRef = useRef<any>();
+  const testText = useRef('');
 
   // const [dataChannel, setDataChannel] = useState<RTCDataChannel>();
   let dataChannel = useRef<RTCDataChannel>();
@@ -82,7 +94,6 @@ export default function Room(props: any) {
     myPeerConnection.current.addEventListener('icecandidate', onPRIceCandidate);
     myPeerConnection.current.addEventListener('track', onPRTrack);
     myPeerConnection.current.addEventListener('negotiationneeded', onNegotiationNeeded);
-
   }, []);
 
   const microphoneClicked = async () => {
@@ -390,12 +401,19 @@ export default function Room(props: any) {
   };
 
   const sendMessage = () => {
-    if (textBox) {
+    console.log(convertToRaw(editorState.getCurrentContent()))
+    const currentContent = editorState.getCurrentContent()
+    const { blocks } = convertToRaw(currentContent);
+    const markup = blocks.map((block, index) => `${block.text}${index !== (blocks.length - 1) ? '\n' : ''}`);
+
+    const text = markup.join('');
+    console.log('text', text)
+    if (text) {
       console.log('SendMessage', dataChannel);
       if (dataChannel.current) {
         const payload = {
           user: username,
-          text: textBox,
+          text,
           createdAt: new Date().toString()
         };
         switch (dataChannel.current.readyState) {
@@ -406,8 +424,8 @@ export default function Room(props: any) {
           case "open":
             // sendQueue.forEach((msg) => dataChannel.send(msg));
             setMessages(messages.concat(payload));
-            setTextBox('');
 
+            setEditorState(EditorState.createEmpty());
             dataChannel.current.send(JSON.stringify({ payload, type: 'chat' }));
             break;
           case "closing":
@@ -422,6 +440,7 @@ export default function Room(props: any) {
       }
     }
   };
+
 
   return (
     <div className="parent-container">
@@ -448,7 +467,7 @@ export default function Room(props: any) {
             <p>Stranger</p>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateRows: '80% 20%' }}>
+        <div style={{ display: 'grid', gridTemplateRows: '70% 30%' }}>
           <Comment.Group className='max-width-initial'>
             <Header as='h1' dividing>
               Chat
@@ -465,7 +484,7 @@ export default function Room(props: any) {
                         <Comment.Metadata>
                           <div>{formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}</div>
                         </Comment.Metadata>
-                        <Comment.Text>{message.text}</Comment.Text>
+                        <Comment.Text className='default-text'>{message.text}</Comment.Text>
                       </Comment.Content>
                     </Comment>
                   );
@@ -473,17 +492,30 @@ export default function Room(props: any) {
               }
             </div>
           </Comment.Group>
-          <Form reply >
-            <Form.TextArea value={textBox} onChange={(_, { value }) => onTextboxChange(value)} />
-            <Button content='Send' onClick={sendMessage} labelPosition='left' icon='edit' primary />
-          </Form>
+          <div>
+            <div onClick={() => editorRef.current.focus()}>
+              <Editor
+                editorState={editorState}
+                onChange={setEditorState}
+                plugins={[emojiPlugin]}
+                ref={editorRef}
+
+              />
+              <EmojiSuggestions />
+
+              <div style={{ display: 'flex' }}>
+                <Button content='Send' onClick={sendMessage} labelPosition='left' icon='edit' primary />
+                < EmojiSelect />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div onMouseEnter={() => setIsControlPanelOpen(true)}>
         <Header as='h3' disabled textAlign='center'>
           Hover here to display the control panel
-      </Header>
+        </Header>
       </div>
 
       <ControlPanel
