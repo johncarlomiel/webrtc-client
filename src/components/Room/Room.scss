@@ -112,3 +112,32 @@
 .max-width-initial {
     max-width: initial !important;
 }
+
+.emoji-icon {
+  cursor: pointer;
+}
+
+div.DraftEditor-root {
+  box-sizing: border-box;
+  border: 1px solid #ddd;
+  cursor: text;
+  padding: 16px;
+  border-radius: 2px;
+  box-shadow: inset 0px 1px 8px -3px #ABABAB;
+  background: #fefefe;
+  min-height: 140px;
+}
+div.DraftEditor-editorContainer,
+div.public-DraftEditor-content {
+  height: 100%;
+}
+
+
+.draftJsEmojiPlugin__emojiSelectPopover__1J1s0 {
+  bottom: 135px;
+}
+
+
+.default-text {
+  white-space: pre-wrap;
+}
