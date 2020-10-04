@@ -208,6 +208,8 @@ export default function Homepage() {
     <div id="home-page">
       <div id="home-body">
         <Button
+          circular
+          color='teal'
           icon='play'
           onClick={startQueue}
           content='Start'
