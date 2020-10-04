@@ -9,7 +9,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import './Room.scss';
 import Editor from 'draft-js-plugins-editor';
 import createEmojiPlugin from 'draft-js-emoji-plugin';
-import { convertToRaw, EditorState } from 'draft-js';
+import { ContentState, convertToRaw, EditorState } from 'draft-js';
 import 'draft-js-emoji-plugin/lib/plugin.css';
 
 const offerOptions: RTCOfferOptions = {
@@ -388,17 +388,12 @@ export default function Room(props: any) {
 
 
   useEffect(() => {
-    console.log('Use Effect Message', messages);
     const childs = chatBoxRef.current.children;
     if (childs.length > 0) {
       const lastChild = childs[childs.length - 1];
       lastChild.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages])
-
-  const onTextboxChange = (value: any) => {
-    setTextBox(value);
-  };
 
   const sendMessage = () => {
     console.log(convertToRaw(editorState.getCurrentContent()))
@@ -424,8 +419,8 @@ export default function Room(props: any) {
           case "open":
             // sendQueue.forEach((msg) => dataChannel.send(msg));
             setMessages(messages.concat(payload));
-
-            setEditorState(EditorState.createEmpty());
+            const newEditorState = EditorState.push(editorState, ContentState.createFromText(''), 'remove-range');
+            setEditorState(newEditorState);
             dataChannel.current.send(JSON.stringify({ payload, type: 'chat' }));
             break;
           case "closing":
@@ -503,10 +498,10 @@ export default function Room(props: any) {
               />
               <EmojiSuggestions />
 
-              <div style={{ display: 'flex' }}>
-                <Button content='Send' onClick={sendMessage} labelPosition='left' icon='edit' primary />
-                < EmojiSelect />
-              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Button content='Send' onClick={sendMessage} labelPosition='left' icon='edit' primary />
+              < EmojiSelect />
             </div>
           </div>
         </div>
