@@ -18,6 +18,7 @@ import isEmpty from 'lodash/isEmpty';
 import './Homepage.scss'
 import { icons } from '../../data/icons';
 import { Icon as Avatar } from '../../data/interface';
+import { getUserAvatar } from '../../util/browserStorage';
 
 enum State {
   QUEUE = 'queuing',
@@ -56,15 +57,8 @@ export default function Homepage() {
       setMediaStream(JSON.parse(storedMediaOption));
     }
 
-    const storedAvatar = localStorage.getItem('avatar');
-
-    if (storedAvatar) {
-      const parsedAvatar = JSON.parse(storedAvatar);
-      if (parsedAvatar.title) {
-        const icon = icons.find(icon => icon.title === parsedAvatar.title);
-        if (icon) setAvatar(icon);
-      }
-    }
+    const icon: Avatar = getUserAvatar();
+    setAvatar(icon);
 
     WebSocketClient.ws.onopen = () => {
       console.log("Websocket Connected");
@@ -171,12 +165,12 @@ export default function Homepage() {
   const getModalState = (state: State) => {
     const modalState: ModalState = {
       queuing: {
-        header: `${elapsedTime} Seconds`,
-        content: <p>Hello :)</p>
+        header: 'Searching for a match',
+        content: `${elapsedTime} Seconds`
       },
       waiting: {
         header: 'Match accepted',
-        content: <p>Nice </p>
+        content: 'Please wait for the others to accept the invitation'
       }
     };
     return modalState[state];
@@ -197,7 +191,7 @@ export default function Homepage() {
   };
 
   const markup: JSX.Element = (
-    <div style={{ display: 'grid', gridTemplateColumns: '20% 20% 20% 20% 20%', width: '100%', justifyItems: 'center', rowGap: '15px' }}>
+    <div className='user-avatar-container'>
       { icons.map((icon, index) => {
         return (
           <div key={index} onClick={() => avatarClicked(icon)}>
@@ -208,7 +202,7 @@ export default function Homepage() {
     </div>
   );
 
-  const { header, content } = queueStatus ? getModalState(queueStatus) : { header: '', content: <p></p> };
+  const { header, content } = queueStatus ? getModalState(queueStatus) : { header: '', content: '' };
   const mediaStreamMarkup = (
     <Grid className="media-select" relaxed textAlign='center'>
       <Header as='h2' textAlign='center'>
@@ -249,7 +243,7 @@ export default function Homepage() {
       </div>
 
       <SimpleModal
-        content={content}
+        content={<p>{content}</p>}
         header={header}
         options={{ size: 'small' }}
         onCloseCb={cancelModalCb}
@@ -269,7 +263,7 @@ export default function Homepage() {
 
 interface ModalContent {
   header: string,
-  content: JSX.Element
+  content: string
 }
 
 interface ModalState {

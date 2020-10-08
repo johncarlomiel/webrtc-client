@@ -12,6 +12,7 @@ import createEmojiPlugin from 'draft-js-emoji-plugin';
 import { ContentState, convertToRaw, EditorState } from 'draft-js';
 import { Icon as Avatar } from '../../data/interface';
 import 'draft-js-emoji-plugin/lib/plugin.css';
+import { getUserAvatar } from "../../util/browserStorage";
 
 const offerOptions: RTCOfferOptions = {
   offerToReceiveAudio: true,
@@ -83,17 +84,9 @@ export default function Room(props: any) {
       }
     }
 
-    const storedAvatar = localStorage.getItem('avatar');
 
-    if (storedAvatar) {
-      const parsedAvatar = JSON.parse(storedAvatar);
-      if (parsedAvatar.title) {
-        const icon = icons.find(icon => icon.title === parsedAvatar.title);
-        console.log('StoredIcon', icon)
-        if (icon) avatar.current = icon;
-      }
-    }
-
+    const icon = getUserAvatar();
+    avatar.current = icon;
 
     WebSocketClient.ws.onerror = evt => {
       console.log(evt)
@@ -109,8 +102,11 @@ export default function Room(props: any) {
     myPeerConnection.current.addEventListener('icecandidate', onPRIceCandidate);
     myPeerConnection.current.addEventListener('track', onPRTrack);
     myPeerConnection.current.addEventListener('negotiationneeded', onNegotiationNeeded);
-    
+
     return () => {
+      myPeerConnection.current.removeEventListener('icecandidate', onPRIceCandidate);
+      myPeerConnection.current.removeEventListener('track', onPRTrack);
+      myPeerConnection.current.removeEventListener('negotiationneeded', onNegotiationNeeded);
     }
   }, []);
 
