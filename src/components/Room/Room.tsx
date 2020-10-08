@@ -10,6 +10,7 @@ import './Room.scss';
 import Editor from 'draft-js-plugins-editor';
 import createEmojiPlugin from 'draft-js-emoji-plugin';
 import { ContentState, convertToRaw, EditorState } from 'draft-js';
+import { Icon as Avatar } from '../../data/interface';
 import 'draft-js-emoji-plugin/lib/plugin.css';
 
 const offerOptions: RTCOfferOptions = {
@@ -44,6 +45,7 @@ export default function Room(props: any) {
   const controlPanelRef = useRef();
   const chatBoxRef = useRef<HTMLDivElement>(document.createElement('div'));
   const [isEmojiShowing, setIsEmojiShowing] = useState<boolean>(false);
+  const [peerAvatar, setPeerAvatar] = useState<Avatar>(icons[0]);
   const [editorState, setEditorState] = useState(() =>
     EditorState.createEmpty(),
   );
@@ -52,6 +54,7 @@ export default function Room(props: any) {
 
   // const [dataChannel, setDataChannel] = useState<RTCDataChannel>();
   let dataChannel = useRef<RTCDataChannel>();
+  const avatar = useRef<Avatar>(icons[0]);
 
   useEffect(() => {
     checkRoomAvailablity();
@@ -80,6 +83,18 @@ export default function Room(props: any) {
       }
     }
 
+    const storedAvatar = localStorage.getItem('avatar');
+
+    if (storedAvatar) {
+      const parsedAvatar = JSON.parse(storedAvatar);
+      if (parsedAvatar.title) {
+        const icon = icons.find(icon => icon.title === parsedAvatar.title);
+        console.log('StoredIcon', icon)
+        if (icon) avatar.current = icon;
+      }
+    }
+
+
     WebSocketClient.ws.onerror = evt => {
       console.log(evt)
     };
@@ -94,6 +109,9 @@ export default function Room(props: any) {
     myPeerConnection.current.addEventListener('icecandidate', onPRIceCandidate);
     myPeerConnection.current.addEventListener('track', onPRTrack);
     myPeerConnection.current.addEventListener('negotiationneeded', onNegotiationNeeded);
+    
+    return () => {
+    }
   }, []);
 
   const microphoneClicked = async () => {
@@ -337,9 +355,15 @@ export default function Room(props: any) {
     if (WebSocketClient.ws.readyState === WebSocket.OPEN) {
       WebSocketClient.ws.close();
     }
+
+    // Send the avatar to peer
+    if (dataChannel.current) {
+      dataChannel.current.send(JSON.stringify({ payload: { avatarTitle: avatar.current.title }, type: 'peer-avatar' }));
+    }
   };
 
   const onDataChannelClose = (event: Event) => {
+    endCall();
   };
 
   const disableRemoteMedia = (mediaTrackKind: 'audio' | 'video') => {
@@ -380,6 +404,13 @@ export default function Room(props: any) {
         break;
       case 'end-video-call':
         endCall();
+        break;
+      case 'peer-avatar':
+        const peerAvatar = icons.find(icon => icon.title === payload.avatarTitle);
+        if (peerAvatar) {
+          console.log('peerAvatar', peerAvatar);
+          setPeerAvatar(peerAvatar);
+        }
         break;
       default:
         break;
@@ -473,7 +504,7 @@ export default function Room(props: any) {
                 messages.map((message, messageIndex) => {
                   return (
                     <Comment key={messageIndex}>
-                      <Comment.Avatar src={message.user === username ? myIcon.src : strangerIcon.src} />
+                      <Comment.Avatar src={message.user === username ? avatar.current.src : peerAvatar.src} />
                       <Comment.Content>
                         <Comment.Author as='a'>{message.user === username ? 'You' : 'Stranger'}</Comment.Author>
                         <Comment.Metadata>

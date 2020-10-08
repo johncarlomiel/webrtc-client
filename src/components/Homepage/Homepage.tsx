@@ -5,10 +5,10 @@ import {
   Radio,
   Grid,
   Header,
-  Icon,
   Search,
+  Icon,
   Divider,
-  Segment,
+  Segment, Image
 } from 'semantic-ui-react'
 import NavigationHeader from '../Header/Header';
 import WebSocketClient from '../../models/WebSocketClient';
@@ -16,6 +16,8 @@ import Swal from 'sweetalert2'
 import SimpleModal, { SimpleModalHandles } from '../sub-components/SimpleModal';
 import isEmpty from 'lodash/isEmpty';
 import './Homepage.scss'
+import { icons } from '../../data/icons';
+import { Icon as Avatar } from '../../data/interface';
 
 enum State {
   QUEUE = 'queuing',
@@ -41,17 +43,27 @@ export default function Homepage() {
   const timerModal = useRef<SimpleModalHandles>();
   const matchReadyModal = useRef<SimpleModalHandles>();
   const [mediaStream, setMediaStream] = useState({ video: true, audio: true });
-
+  const [avatar, setAvatar] = useState<Avatar>(icons[0]);
 
   useEffect(() => {
-    // Load the default settings on localStorage
     if (WebSocketClient.ws.readyState === WebSocket.CLOSED) {
       WebSocketClient.init();
     }
-    
+
+    // Load the default settings on localStorage
     const storedMediaOption = localStorage.getItem('mediaOption');
     if (storedMediaOption) {
       setMediaStream(JSON.parse(storedMediaOption));
+    }
+
+    const storedAvatar = localStorage.getItem('avatar');
+
+    if (storedAvatar) {
+      const parsedAvatar = JSON.parse(storedAvatar);
+      if (parsedAvatar.title) {
+        const icon = icons.find(icon => icon.title === parsedAvatar.title);
+        if (icon) setAvatar(icon);
+      }
     }
 
     WebSocketClient.ws.onopen = () => {
@@ -159,12 +171,12 @@ export default function Homepage() {
   const getModalState = (state: State) => {
     const modalState: ModalState = {
       queuing: {
-        header: 'Searching for a match',
-        content: `${elapsedTime} Seconds`
+        header: `${elapsedTime} Seconds`,
+        content: <p>Hello :)</p>
       },
       waiting: {
         header: 'Match accepted',
-        content: 'Please wait for the others to accept the invitation'
+        content: <p>Nice </p>
       }
     };
     return modalState[state];
@@ -179,7 +191,24 @@ export default function Homepage() {
     setMediaStream(modifiedMediaStream);
   };
 
-  const { header, content } = queueStatus ? getModalState(queueStatus) : { header: '', content: '' };
+  const avatarClicked = (icon: Avatar) => {
+    localStorage.setItem('avatar', JSON.stringify({ title: icon.title }));
+    setAvatar(icon)
+  };
+
+  const markup: JSX.Element = (
+    <div style={{ display: 'grid', gridTemplateColumns: '20% 20% 20% 20% 20%', width: '100%', justifyItems: 'center', rowGap: '15px' }}>
+      { icons.map((icon, index) => {
+        return (
+          <div key={index} onClick={() => avatarClicked(icon)}>
+            <Image className={`user-avatar ${avatar.title === icon.title ? 'active' : ''}`} src={icon.src} size='tiny' avatar />
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const { header, content } = queueStatus ? getModalState(queueStatus) : { header: '', content: <p></p> };
   const mediaStreamMarkup = (
     <Grid className="media-select" relaxed textAlign='center'>
       <Header as='h2' textAlign='center'>
@@ -202,6 +231,8 @@ export default function Homepage() {
           </Header>
         </Grid.Column>
       </Grid.Row>
+      <Divider />
+      { markup}
     </Grid>
   );
   return (
@@ -218,7 +249,7 @@ export default function Homepage() {
       </div>
 
       <SimpleModal
-        content={<p>{content}</p>}
+        content={content}
         header={header}
         options={{ size: 'small' }}
         onCloseCb={cancelModalCb}
@@ -238,7 +269,7 @@ export default function Homepage() {
 
 interface ModalContent {
   header: string,
-  content: string
+  content: JSX.Element
 }
 
 interface ModalState {
