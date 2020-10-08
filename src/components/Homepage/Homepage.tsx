@@ -5,10 +5,10 @@ import {
   Radio,
   Grid,
   Header,
-  Icon,
   Search,
+  Icon,
   Divider,
-  Segment,
+  Segment, Image
 } from 'semantic-ui-react'
 import NavigationHeader from '../Header/Header';
 import WebSocketClient from '../../models/WebSocketClient';
@@ -16,6 +16,9 @@ import Swal from 'sweetalert2'
 import SimpleModal, { SimpleModalHandles } from '../sub-components/SimpleModal';
 import isEmpty from 'lodash/isEmpty';
 import './Homepage.scss'
+import { icons } from '../../data/icons';
+import { Icon as Avatar } from '../../data/interface';
+import { getUserAvatar } from '../../util/browserStorage';
 
 enum State {
   QUEUE = 'queuing',
@@ -41,18 +44,21 @@ export default function Homepage() {
   const timerModal = useRef<SimpleModalHandles>();
   const matchReadyModal = useRef<SimpleModalHandles>();
   const [mediaStream, setMediaStream] = useState({ video: true, audio: true });
-
+  const [avatar, setAvatar] = useState<Avatar>(icons[0]);
 
   useEffect(() => {
-    // Load the default settings on localStorage
     if (WebSocketClient.ws.readyState === WebSocket.CLOSED) {
       WebSocketClient.init();
     }
-    
+
+    // Load the default settings on localStorage
     const storedMediaOption = localStorage.getItem('mediaOption');
     if (storedMediaOption) {
       setMediaStream(JSON.parse(storedMediaOption));
     }
+
+    const icon: Avatar = getUserAvatar();
+    setAvatar(icon);
 
     WebSocketClient.ws.onopen = () => {
       console.log("Websocket Connected");
@@ -179,6 +185,23 @@ export default function Homepage() {
     setMediaStream(modifiedMediaStream);
   };
 
+  const avatarClicked = (icon: Avatar) => {
+    localStorage.setItem('avatar', JSON.stringify({ title: icon.title }));
+    setAvatar(icon)
+  };
+
+  const markup: JSX.Element = (
+    <div className='user-avatar-container'>
+      { icons.map((icon, index) => {
+        return (
+          <div key={index} onClick={() => avatarClicked(icon)}>
+            <Image className={`user-avatar ${avatar.title === icon.title ? 'active' : ''}`} src={icon.src} size='tiny' avatar />
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const { header, content } = queueStatus ? getModalState(queueStatus) : { header: '', content: '' };
   const mediaStreamMarkup = (
     <Grid className="media-select" relaxed textAlign='center'>
@@ -202,6 +225,8 @@ export default function Homepage() {
           </Header>
         </Grid.Column>
       </Grid.Row>
+      <Divider />
+      { markup}
     </Grid>
   );
   return (
