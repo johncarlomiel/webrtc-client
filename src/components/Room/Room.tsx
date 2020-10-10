@@ -481,7 +481,7 @@ export default function Room(props: any) {
       }}>
         <div className="media-container">
           <div className="participant-media">
-            <video ref={localVid} playsInline autoPlay></video>
+            <video ref={localVid} muted playsInline autoPlay></video>
             <p>You</p>
           </div>
           <div className="participant-media">
