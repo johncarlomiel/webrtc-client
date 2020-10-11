@@ -166,6 +166,7 @@ export default function Room(props: any) {
       WebSocketClient.ws.close();
     }
 
+    myPeerConnection.current.close();
     props.history.push('/');
   }
 
